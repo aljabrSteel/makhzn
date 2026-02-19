@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام إدارة الفضل - الجبر ستيل (نسخة سحابية)</title>
+    <title>نظام إدارة الفضل - الجبر ستيل (نسخة سحابية + احتياطي محلي)</title>
     <style>
-        /* نفس التنسيقات السابقة مع إضافة مؤشر تحميل بسيط */
+        /* نفس التنسيقات مع إضافة لون للتحذير */
         * {
             box-sizing: border-box;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -167,6 +167,11 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+        .alert.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
         .summary {
             background: #e9f2ff;
             padding: 15px;
@@ -268,7 +273,7 @@
 </head>
 <body>
 <div class="container">
-    <h2>🏭 نظام إدارة الفضل المتطور - الجبر ستيل (نسخة سحابية)</h2>
+    <h2>🏭 نظام إدارة الفضل المتطور - الجبر ستيل (نسخة سحابية + احتياطي محلي)</h2>
 
     <!-- رسائل تنبيه -->
     <div id="alertBox" class="alert"></div>
@@ -383,10 +388,10 @@
 <script>
     // ==================== إعدادات JSONBin.io ====================
     const BIN_ID = '69970e66d0ea881f40c6e5f1';   // Bin ID الخاص بك
-    const API_KEY = '$2a$10$bhl.pcmrJWpGboU.dqR5vur.I4Fq9le/uflXUcdof7xF/3sSAu4/O';   // <-- أدخل المفتاح هنا
+    const API_KEY = '$2a$10$Vr.IXqFqQhVonWFc6/ui3uMLaDIhhXi7P1EbpoY95.Gflp22/PMwG';   // مفتاح API
 
     // ==================== المتغيرات العامة ====================
-    let waste = [];                      // سيتم ملؤها من السحابة
+    let waste = [];                      // سيتم ملؤها من السحابة أو localStorage
     let currentSort = { field: null, order: 'asc' };
     let searchQuery = '';
     let filterType = '';
@@ -407,7 +412,7 @@
     const importModal = document.getElementById('importModal');
     const importText = document.getElementById('importText');
 
-    // مؤشر تحميل بسيط (يمكن إضافته للأزرار)
+    // مؤشر تحميل بسيط
     let isLoading = false;
 
     // ==================== دوال مساعدة ====================
@@ -420,27 +425,37 @@
         }, 3000);
     }
 
-    // عرض/إخفاء مؤشر التحميل (اختياري)
     function setLoading(loading) {
         isLoading = loading;
-        // يمكن تعطيل الأزرار أثناء التحميل
         document.querySelectorAll('button').forEach(btn => btn.disabled = loading);
     }
 
-    // ==================== دوال JSONBin.io ====================
+    // ==================== دوال JSONBin.io مع نسخ احتياطي محلي ====================
     async function loadWaste() {
         setLoading(true);
+        let loadedFromCloud = false;
         try {
             const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
                 headers: { 'X-Master-Key': API_KEY }
             });
-            if (!response.ok) throw new Error('فشل التحميل');
+            if (!response.ok) throw new Error('فشل التحميل من السحابة');
             const data = await response.json();
             waste = data.record || [];
+            // تحديث النسخة الاحتياطية في localStorage
+            localStorage.setItem('waste_backup', JSON.stringify(waste));
+            loadedFromCloud = true;
+            showAlert('تم تحميل البيانات من السحابة', 'success');
         } catch (error) {
-            console.error('خطأ في تحميل البيانات:', error);
-            waste = [];
-            showAlert('تعذر تحميل البيانات من السحابة، استخدم البيانات المحلية', 'error');
+            console.warn('تعذر الاتصال بالسحابة، جلب البيانات من النسخة المحلية...', error);
+            // محاولة القراءة من localStorage
+            const localData = localStorage.getItem('waste_backup');
+            if (localData) {
+                waste = JSON.parse(localData);
+                showAlert('تم تحميل البيانات من النسخة المحلية (قد تكون غير محدثة)', 'warning');
+            } else {
+                waste = [];
+                showAlert('لا توجد بيانات محفوظة محلياً، ابدأ بإضافة قطع جديدة', 'error');
+            }
         } finally {
             setLoading(false);
             renderWaste();
@@ -458,10 +473,15 @@
                 },
                 body: JSON.stringify(waste)
             });
-            if (!response.ok) throw new Error('فشل الحفظ');
+            if (!response.ok) throw new Error('فشل الحفظ في السحابة');
+            // تحديث النسخة الاحتياطية بعد الحفظ الناجح
+            localStorage.setItem('waste_backup', JSON.stringify(waste));
+            showAlert('تم حفظ البيانات في السحابة', 'success');
         } catch (error) {
-            console.error('خطأ في حفظ البيانات:', error);
-            showAlert('حدث خطأ في حفظ البيانات', 'error');
+            console.error('خطأ في حفظ البيانات في السحابة:', error);
+            // على الأقل نحفظ محلياً
+            localStorage.setItem('waste_backup', JSON.stringify(waste));
+            showAlert('تعذر الحفظ في السحابة، تم الحفظ محلياً فقط', 'warning');
         } finally {
             setLoading(false);
         }
@@ -595,7 +615,7 @@
         if (isNaN(length) || length <= 0) { showAlert('الرجاء إدخال طول صحيح', 'error'); return; }
 
         waste.push({ type, length });
-        await saveWaste();   // حفظ في السحابة
+        await saveWaste();   // حفظ في السحابة (أو محلياً)
         renderWaste();
         showAlert('تم إضافة الفضلة بنجاح', 'success');
         document.getElementById('newType').value = '';
